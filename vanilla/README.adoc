@@ -1,7 +1,7 @@
 [[_the_resource_server_angular_js_and_spring_security_part_iii]]
 = The Resource Server
 
-In this section we continue <<_the_login_page_angular_js_and_spring_security_part_ii,our discussion>> of how to use http://projects.spring.io/spring-security[Spring Security] with http://angularjs.org[Angular JS] in a "single page application". Here we start by breaking out the "greeting" resource that we are using as the dynamic content in our application into a separate server, first as an unprotected resource, and then protected by an opaque token. This is the third in a series of sections, and you can catch up on the basic building blocks of the application or build it from scratch by reading the <<_spring_and_angular_js_a_secure_single_page_application,first section>>, or you can just go straight to the source code in Github, which is in two parts: one where the https://github.com/dsyer/spring-security-angular/tree/master/vanilla[resource is unprotected], and one where it is https://github.com/dsyer/spring-security-angular/tree/master/spring-session[protected by a token].
+In this section we continue <<_the_login_page_angular_js_and_spring_security_part_ii,our discussion>> of how to use http://projects.spring.io/spring-security[Spring Security] with http://angular.io[Angular] in a "single page application". Here we start by breaking out the "greeting" resource that we are using as the dynamic content in our application into a separate server, first as an unprotected resource, and then protected by an opaque token. This is the third in a series of sections, and you can catch up on the basic building blocks of the application or build it from scratch by reading the <<_spring_and_angular_js_a_secure_single_page_application,first section>>, or you can just go straight to the source code in Github, which is in two parts: one where the https://github.com/dsyer/spring-security-angular/tree/master/vanilla[resource is unprotected], and one where it is https://github.com/dsyer/spring-security-angular/tree/master/spring-session[protected by a token].
 
 TIP: if you are working through this section with the sample application, be sure to clear your browser cache of cookies and HTTP Basic credentials. In Chrome the best way to do that for a single server is to open a new incognito window.
 
@@ -9,52 +9,56 @@ TIP: if you are working through this section with the sample application, be sur
 
 === Client Side Changes
 
-On the client side there isn't very much to do to move the resource to a different backend. Here's the "home" controller in the https://github.com/dsyer/spring-security-angular/blob/master/single/src/main/resources/static/js/hello.js[last section]:
+On the client side there isn't very much to do to move the resource to a different backend. Here's the "home" component in the https://github.com/spring-guides/tut-spring-security-and-angular-js/blob/master/single/src/app/home/component.ts[last section]:
 
-.hello.js
+.home.component.ts
 [source,javascript]
 ----
-angular.module('hello', [ 'ngRoute' ])
-...
-.controller('home', function($http) {
-    var self = this;
-	$http.get('/resource/').then(function(response) {
-		self.greeting = response.data;
-	})
+@Component({
+  templateUrl: './home.component.html'
 })
-...
+export class HomeComponent {
+
+  title = 'Demo';
+  greeting = {};
+
+  constructor(private app: AppService, private http: HttpClient) {
+    http.get('resource').subscribe(data => this.greeting = data);
+  }
+
+  authenticated() { return this.app.authenticated; }
+
+}
 ----
 
 All we need to do to this is change the URL. For example, if we are going to run the new resource on localhost, it could look like this:
 
-.hello.js
+.home.component.ts
 [source,javascript]
 ----
-angular.module('hello', [ 'ngRoute' ])
-...
-.controller('home', function($http) {
-    var self = this;
-	$http.get('http://localhost:9000/').then(function(response) {
-		self.greeting = response.data;
-	})
-})
-...
+        http.get('http://localhost:9000').subscribe(data => this.greeting = data);
 ----
 
 === Server Side Changes
 
-The https://github.com/dsyer/spring-security-angular/blob/master/vanilla/ui/src/main/java/demo/UiApplication.java[UI server] is trivial to change: we just need to remove the `@RequestMapping` for the greeting resource (it was "/resource"). Then we need to create a new resource server, which we can do like we did in the <<_spring_and_angular_js_a_secure_single_page_application,first section>> using the https://start.spring.io[Spring Boot Initializr]. E.g. using curl on a UN*X like system:
+The https://github.com/spring-guides/tut-spring-security-and-angular-js/blob/master/vanilla/ui/src/main/java/demo/UiApplication.java[UI server]
+is trivial to change: we just need to remove the `@RequestMapping` for the
+greeting resource (it was "/resource").
+Then we need to create a new resource server, which we can do like we did in
+the <<_spring_and_angular_js_a_secure_single_page_application,first section>>
+using the https://start.spring.io[Spring Boot Initializr].
+E.g. using curl on a UN*X like system:
 
 [source]
 ----
 $ mkdir resource && cd resource
 $ curl https://start.spring.io/starter.tgz -d style=web \
--d name=resource | tar -xzvf - 
+-d name=resource | tar -xzvf -
 ----
 
 You can then import that project (it's a normal Maven Java project by default) into your favourite IDE, or just work with the files and "mvn" on the command line.
 
-Just add a `@RequestMapping` to the https://github.com/dsyer/spring-security-angular/blob/master/vanilla/resource/src/main/groovy/demo/ResourceApplication.groovy[main application class], copying the implementation from the https://github.com/dsyer/spring-security-angular/blob/master/single/src/main/java/demo/UiApplication.java[old UI]:
+Just add a `@RequestMapping` to the https://github.com/spring-guides/tut-spring-security-and-angular-js/blob/master/vanilla/resource/src/main/java/demo/ResourceApplication.java[main application class], copying the implementation from the https://github.com/dsyer/spring-security-angular/blob/master/single/src/main/java/demo/UiApplication.java[old UI]:
 
 .ResourceApplication.java
 [source,java]
@@ -62,7 +66,7 @@ Just add a `@RequestMapping` to the https://github.com/dsyer/spring-security-ang
 @SpringBootApplication
 @RestController
 class ResourceApplication {
-	
+
   @RequestMapping("/")
   public Message home() {
     return new Message("Hello World");
@@ -72,6 +76,15 @@ class ResourceApplication {
     SpringApplication.run(ResourceApplication.class, args);
   }
 
+}
+
+class Message {
+  private String id = UUID.randomUUID().toString();
+  private String content;
+  public Message(String content) {
+    this.content = content;
+  }
+  // ... getters and setters and default constructor
 }
 ----
 
@@ -94,7 +107,14 @@ If you try loading that resource from the UI (on port 8080) in a browser, you wi
 
 == CORS Negotiation
 
-The browser tries to negotiate with our resource server to find out if it is allowed to access it according to the http://en.wikipedia.org/wiki/Cross-origin_resource_sharing[Cross Origin Resource Sharing] protocol. It's not an Angular JS responsibility, so just like the cookie contract it will work like this with all JavaScript in the browser. The two servers do not declare that they have a common origin, so the browser declines to send the request and the UI is broken.
+The browser tries to negotiate with our resource server to find out if it is
+allowed to access it according to the
+http://en.wikipedia.org/wiki/Cross-origin_resource_sharing[Cross Origin Resource Sharing]
+protocol.
+It's not an Angular responsibility, so just like the cookie contract it will
+work like this with all JavaScript in the browser.
+The two servers do not declare that they have a common origin, so the browser
+declines to send the request and the UI is broken.
 
 To fix that we need to support the CORS protocol which involves a "pre-flight" OPTIONS request and some headers to list the allowed behaviour of the caller. Spring 4.2 has some nice https://jira.spring.io/browse/SPR-9278[fine-grained CORS support], so we can just add an annotation to our controller mapping, for example:
 
@@ -161,7 +181,7 @@ Remember from <<_the_login_page_angular_js_and_spring_security_part_ii,Part II>>
 
 === Spring Session
 
-That part of the solution is pretty easy with https://github.com/spring-projects/spring-session/[Spring Session]. All we need is a shared data store (Redis is supported out of the box), and a few lines of configuration in the servers to set up a `Filter`.
+That part of the solution is pretty easy with https://github.com/spring-projects/spring-session/[Spring Session]. All we need is a shared data store (Redis and JDBC are supported out of the box), and a few lines of configuration in the servers to set up a `Filter`.
 
 In the UI application we need to add some dependencies to our https://github.com/dsyer/spring-security-angular/blob/master/spring-session/ui/pom.xml[POM]:
 
@@ -174,13 +194,13 @@ In the UI application we need to add some dependencies to our https://github.com
 </dependency>
 <dependency>
   <groupId>org.springframework.boot</groupId>
-  <artifactId>spring-boot-starter-redis</artifactId>
+  <artifactId>spring-boot-starter-data-redis</artifactId>
 </dependency>
 ----
 
 Spring Boot and Spring Session work together to connect to Redis and store session data centrally.
 
-With that 1 line of code in place and a Redis server running on localhost you can run the UI application, login with some valid user credentials, and the session data (the authentication and CSRF token) will be stored in redis.
+With that 1 line of code in place and a Redis server running on localhost you can run the UI application, login with some valid user credentials, and the session data (the authentication) will be stored in redis.
 
 TIP: if you don't have a redis server running locally you can easily spin one up with https://www.docker.com/[Docker] (on Windows or MacOS this requires a VM). There is a http://docs.docker.com/compose/[`docker-compose.yml`] file in the https://github.com/dsyer/spring-security-angular/tree/master/spring-session/docker-compose.yml[source code in Github] which you can run really easily on the command line with `docker-compose up`. If you do this in a VM the Redis server will be running on a different host than localhost, so you either need to tunnel it onto localhost, or configure the app to point at the correct `spring.redis.host` in your `application.properties`.
 
@@ -188,28 +208,19 @@ TIP: if you don't have a redis server running locally you can easily spin one up
 
 The only missing piece is the transport mechanism for the key to the data in the store. The key is the `HttpSession` ID, so if we can get hold of that key in the UI client, we can send it as a custom header to the resource server. So the "home" controller would need to change so that it sends the header as part of the HTTP request for the greeting resource. For example:
 
-.hello.js
+.home.component.ts
 [source,javascript]
 ----
-angular.module('hello', [ 'ngRoute' ])
-...
-.controller('home', function($http) {
-  var self = this;
-  $http.get('token').then(function(response) {
-    $http({
-      url : 'http://localhost:9000',
-      method : 'GET',
-      headers : {
-        'X-Auth-Token' : response.data.token
-      }
-    }).then(function(response) {
-      self.greeting = response.data;
-    });
-  })
-});
+  constructor(private app: AppService, private http: HttpClient) {
+    http.get('token').subscribe(data => {
+      const token = data['token'];
+      http.get('http://localhost:9000', {headers : new HttpHeaders().set('X-Auth-Token', token)})
+        .subscribe(response => this.greeting = response);
+    }, () => {});
+  }
 ----
 
-(A more elegant solution might be to grab the token as needed, and use an Angular https://docs.angularjs.org/api/ng/service/$http[interceptor] to add the header to every request to the resource server. The interceptor definition could then be abstracted instead of doing it all in one place and cluttering up the business logic.)
+(A more elegant solution might be to grab the token as needed, and use our `RequestOptionsService` to add the header to every request to the resource server.)
 
 Instead of going directly to "http://localhost:9000[http://localhost:9000]" we have wrapped that call in the success callback of a call to a new custom endpoint on the UI server at "/token". The implementation of that is trivial:
 
@@ -227,7 +238,6 @@ public class UiApplication {
   ...
 
   @RequestMapping("/token")
-  @ResponseBody
   public Map<String,String> token(HttpSession session) {
     return Collections.singletonMap("token", session.getId());
   }
@@ -245,8 +255,8 @@ There is one tiny change to the resource server for it to be able to accept the 
 [source,java]
 ----
 @RequestMapping("/")
-@CrossOrigin(origins = "*", maxAge = 3600, 
-    allowedHeaders={"x-auth-token", "x-requested-with"})
+@CrossOrigin(origins = "*", maxAge = 3600,
+    allowedHeaders={"x-auth-token", "x-requested-with", "x-xsrf-token"})
 public Message home() {
   return new Message("Hello World");
 }
@@ -280,7 +290,7 @@ All that remains is to pick up the custom token in the resource server and use i
 class ResourceApplication {
 
   ...
-  
+
   @Bean
   HeaderHttpSessionStrategy sessionStrategy() {
     return new HeaderHttpSessionStrategy();
@@ -314,6 +324,6 @@ TL;DR the UI and resource servers do not have a common origin, so they cannot sh
 
 == Conclusion
 
-We have duplicated the features of the application in <<_the_login_page_angular_js_and_spring_security_part_ii,Part II of this series>>: a home page with a greeting fetched from a remote backend, with login and logout links in a navigation bar. The difference is that the greeting comes from a resource server that is a standalone, instead of being embedded in the UI server. This added significant complexity to the implementation, but the good news is that we have a mostly configuration-based (and practically 100% declarative) solution. We could even make the solution 100% declarative by extracting all the new code into libraries (Spring configuration and Angular custom directives). We are going to defer that interesting task for after the next couple of installments. In the https://spring.io/blog/2015/01/28/the-api-gateway-pattern-angular-js-and-spring-security-part-iv[next section] we are going to look at a different really great way to reduce all the complexity in the current implementation: the API Gateway Pattern (the client sends all its requests to one place and authentication is handled there).
+We have duplicated the features of the application in <<_the_login_page_angular_js_and_spring_security_part_ii,Part II of this series>>: a home page with a greeting fetched from a remote backend, with login and logout links in a navigation bar. The difference is that the greeting comes from a resource server that is a standalone, instead of being embedded in the UI server. This added significant complexity to the implementation, but the good news is that we have a mostly configuration-based (and practically 100% declarative) solution. We could even make the solution 100% declarative by extracting all the new code into libraries (Spring configuration and Angular custom directives). We are going to defer that interesting task for after the next couple of installments. In the <<_the_api_gateway_pattern_angular_js_and_spring_security_part_iv,next section>> we are going to look at a different really great way to reduce all the complexity in the current implementation: the API Gateway Pattern (the client sends all its requests to one place and authentication is handled there).
 
-NOTE: we used Spring Session here to share sessions between 2 servers that are not logically the same application. It's a neat trick, and it isn't possible with "regular" JEE distributed sessions.
+NOTE: We used Spring Session here to share sessions between 2 servers that are not logically the same application. It's a neat trick, and it isn't possible with "regular" JEE distributed sessions.
